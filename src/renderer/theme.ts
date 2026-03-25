@@ -268,21 +268,51 @@ const lightColors = {
 
 export type ColorPalette = { [K in keyof typeof darkColors]: string }
 
+// ─── ChatGPT color palette (green accent, same dark base) ───
+
+const chatgptDarkColors: typeof darkColors = {
+  ...darkColors,
+  accent:               '#10a37f',
+  accentLight:          'rgba(16, 163, 127, 0.1)',
+  accentSoft:           'rgba(16, 163, 127, 0.15)',
+  accentBorder:         'rgba(16, 163, 127, 0.19)',
+  accentBorderMedium:   'rgba(16, 163, 127, 0.25)',
+  inputFocusBorder:     'rgba(16, 163, 127, 0.4)',
+  statusRunning:        '#10a37f',
+  statusRunningBg:      'rgba(16, 163, 127, 0.1)',
+  statusPermission:     '#10a37f',
+  statusPermissionGlow: 'rgba(16, 163, 127, 0.4)',
+  toolRunningBorder:    'rgba(16, 163, 127, 0.3)',
+  toolRunningBg:        'rgba(16, 163, 127, 0.05)',
+  timelineNode:         'rgba(16, 163, 127, 0.2)',
+  timelineNodeActive:   '#10a37f',
+  sendBg:               '#10a37f',
+  sendHover:            '#0d8f6e',
+  sendDisabled:         'rgba(16, 163, 127, 0.3)',
+} as const
+
 // ─── Theme store ───
 
 export type ThemeMode = 'system' | 'light' | 'dark'
+export type Provider = 'claude' | 'chatgpt'
 
 interface ThemeState {
   isDark: boolean
   themeMode: ThemeMode
   soundEnabled: boolean
   expandedUI: boolean
+  visibleInScreenShare: boolean
+  provider: Provider
+  chatgptViewExpanded: boolean
   /** OS-reported dark mode — used when themeMode is 'system' */
   _systemIsDark: boolean
   setIsDark: (isDark: boolean) => void
   setThemeMode: (mode: ThemeMode) => void
   setSoundEnabled: (enabled: boolean) => void
   setExpandedUI: (expanded: boolean) => void
+  setVisibleInScreenShare: (visible: boolean) => void
+  setProvider: (provider: Provider) => void
+  setChatgptViewExpanded: (expanded: boolean) => void
   /** Called by OS theme change listener — updates system value */
   setSystemTheme: (isDark: boolean) => void
 }
@@ -303,12 +333,15 @@ function syncTokensToCss(tokens: ColorPalette): void {
 function applyTheme(isDark: boolean): void {
   document.documentElement.classList.toggle('dark', isDark)
   document.documentElement.classList.toggle('light', !isDark)
-  syncTokensToCss(isDark ? darkColors : lightColors)
+  const provider = useThemeStore.getState().provider
+  syncTokensToCss(
+    isDark ? (provider === 'chatgpt' ? chatgptDarkColors : darkColors) : lightColors
+  )
 }
 
 const SETTINGS_KEY = 'clui-settings'
 
-function loadSettings(): { themeMode: ThemeMode; soundEnabled: boolean; expandedUI: boolean } {
+function loadSettings(): { themeMode: ThemeMode; soundEnabled: boolean; expandedUI: boolean; visibleInScreenShare: boolean; provider: Provider } {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY)
     if (raw) {
@@ -317,13 +350,15 @@ function loadSettings(): { themeMode: ThemeMode; soundEnabled: boolean; expanded
         themeMode: ['light', 'dark'].includes(parsed.themeMode) ? parsed.themeMode : 'dark',
         soundEnabled: typeof parsed.soundEnabled === 'boolean' ? parsed.soundEnabled : true,
         expandedUI: typeof parsed.expandedUI === 'boolean' ? parsed.expandedUI : false,
+        visibleInScreenShare: typeof parsed.visibleInScreenShare === 'boolean' ? parsed.visibleInScreenShare : true,
+        provider: parsed.provider === 'chatgpt' ? 'chatgpt' : 'claude',
       }
     }
   } catch {}
-  return { themeMode: 'dark', soundEnabled: true, expandedUI: false }
+  return { themeMode: 'dark', soundEnabled: true, expandedUI: false, visibleInScreenShare: true, provider: 'claude' }
 }
 
-function saveSettings(s: { themeMode: ThemeMode; soundEnabled: boolean; expandedUI: boolean }): void {
+function saveSettings(s: { themeMode: ThemeMode; soundEnabled: boolean; expandedUI: boolean; visibleInScreenShare: boolean; provider: Provider }): void {
   try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)) } catch {}
 }
 
@@ -335,6 +370,9 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
   themeMode: saved.themeMode,
   soundEnabled: saved.soundEnabled,
   expandedUI: saved.expandedUI,
+  visibleInScreenShare: saved.visibleInScreenShare,
+  provider: saved.provider,
+  chatgptViewExpanded: false,
   _systemIsDark: true,
   setIsDark: (isDark) => {
     set({ isDark })
@@ -344,16 +382,30 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
     const resolved = mode === 'system' ? get()._systemIsDark : mode === 'dark'
     set({ themeMode: mode, isDark: resolved })
     applyTheme(resolved)
-    saveSettings({ themeMode: mode, soundEnabled: get().soundEnabled, expandedUI: get().expandedUI })
+    saveSettings({ themeMode: mode, soundEnabled: get().soundEnabled, expandedUI: get().expandedUI, visibleInScreenShare: get().visibleInScreenShare, provider: get().provider })
   },
   setSoundEnabled: (enabled) => {
     set({ soundEnabled: enabled })
-    saveSettings({ themeMode: get().themeMode, soundEnabled: enabled, expandedUI: get().expandedUI })
+    saveSettings({ themeMode: get().themeMode, soundEnabled: enabled, expandedUI: get().expandedUI, visibleInScreenShare: get().visibleInScreenShare, provider: get().provider })
   },
   setExpandedUI: (expanded) => {
     set({ expandedUI: expanded })
-    saveSettings({ themeMode: get().themeMode, soundEnabled: get().soundEnabled, expandedUI: expanded })
+    saveSettings({ themeMode: get().themeMode, soundEnabled: get().soundEnabled, expandedUI: expanded, visibleInScreenShare: get().visibleInScreenShare, provider: get().provider })
   },
+  setVisibleInScreenShare: (visible) => {
+    set({ visibleInScreenShare: visible })
+    saveSettings({ themeMode: get().themeMode, soundEnabled: get().soundEnabled, expandedUI: get().expandedUI, visibleInScreenShare: visible, provider: get().provider })
+    window.clui?.setContentProtection(!visible)
+  },
+  setProvider: (provider) => {
+    set({ provider })
+    const isDark = get().isDark
+    syncTokensToCss(
+      isDark ? (provider === 'chatgpt' ? chatgptDarkColors : darkColors) : lightColors
+    )
+    saveSettings({ themeMode: get().themeMode, soundEnabled: get().soundEnabled, expandedUI: get().expandedUI, visibleInScreenShare: get().visibleInScreenShare, provider })
+  },
+  setChatgptViewExpanded: (expanded) => set({ chatgptViewExpanded: expanded }),
   setSystemTheme: (isDark) => {
     set({ _systemIsDark: isDark })
     // Only apply if following system
@@ -364,18 +416,33 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
   },
 }))
 
-// Initialize CSS vars with saved theme
-syncTokensToCss(saved.themeMode === 'light' ? lightColors : darkColors)
+// Initialize CSS vars with saved theme + provider
+const initProvider = saved.provider ?? 'claude'
+syncTokensToCss(
+  saved.themeMode === 'light' ? lightColors
+  : initProvider === 'chatgpt' ? chatgptDarkColors
+  : darkColors
+)
+
+// Inject CSS transition rule so --clui-* color tokens animate smoothly on provider switch
+;(() => {
+  const s = document.createElement('style')
+  s.textContent = `*, *::before, *::after { transition-property: background-color, border-color, color, box-shadow, fill, stroke, opacity; transition-duration: 0.32s; transition-timing-function: cubic-bezier(0.4, 0, 0.1, 1); }`
+  document.head.appendChild(s)
+})()
 
 /** Reactive hook — returns the active color palette */
 export function useColors(): ColorPalette {
   const isDark = useThemeStore((s) => s.isDark)
-  return isDark ? darkColors : lightColors
+  const provider = useThemeStore((s) => s.provider)
+  if (!isDark) return lightColors
+  return provider === 'chatgpt' ? chatgptDarkColors : darkColors
 }
 
 /** Non-reactive getter — use outside React components */
-export function getColors(isDark: boolean): ColorPalette {
-  return isDark ? darkColors : lightColors
+export function getColors(isDark: boolean, provider: Provider = 'claude'): ColorPalette {
+  if (!isDark) return lightColors
+  return provider === 'chatgpt' ? chatgptDarkColors : darkColors
 }
 
 // ─── Backward compatibility ───

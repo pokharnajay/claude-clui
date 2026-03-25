@@ -358,6 +358,9 @@ export const IPC = {
   // Permission mode
   SET_PERMISSION_MODE: 'clui:set-permission-mode',
 
+  // Screen sharing
+  SET_CONTENT_PROTECTION: 'clui:set-content-protection',
+
   // Legacy (kept for backward compat during migration)
   STREAM_EVENT: 'clui:stream-event',
   RUN_COMPLETE: 'clui:run-complete',

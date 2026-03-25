@@ -10,3 +10,16 @@ declare global {
     clui: CluiAPI
   }
 }
+
+declare namespace JSX {
+  interface IntrinsicElements {
+    webview: React.DetailedHTMLProps<
+      React.HTMLAttributes<Electron.WebviewTag> & {
+        src?: string
+        partition?: string
+        allowpopups?: string
+      },
+      Electron.WebviewTag
+    >
+  }
+}

@@ -122,6 +122,7 @@ function createWindow(): void {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      webviewTag: true,   // Required for <webview> element in renderer
     },
   })
 
@@ -129,6 +130,19 @@ function createWindow(): void {
   // but explicit flags ensure correct behavior on older Electron builds.
   mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
   mainWindow.setAlwaysOnTop(true, 'screen-saver')
+  // NSPanel defaults to NSWindowSharingNone, which hides it from screen
+  // recording tools (Zoom, Meet, QuickTime, etc.). Explicitly set to
+  // NSWindowSharingReadOnly so the overlay appears in screen shares.
+  mainWindow.setContentProtection(false)
+
+  // Allow webview popup windows (e.g. ChatGPT OAuth login) to open
+  mainWindow.webContents.on('did-attach-webview', (_event, webviewContents) => {
+    webviewContents.setWindowOpenHandler(({ url }) => {
+      // Redirect any popup back into the webview itself (login flows, OAuth)
+      webviewContents.loadURL(url)
+      return { action: 'deny' }
+    })
+  })
 
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show()
@@ -339,6 +353,10 @@ ipcMain.on(IPC.SET_PERMISSION_MODE, (_event, mode: string) => {
   }
   log(`IPC SET_PERMISSION_MODE: ${mode}`)
   controlPlane.setPermissionMode(mode)
+})
+
+ipcMain.on(IPC.SET_CONTENT_PROTECTION, (_event, protect: boolean) => {
+  mainWindow?.setContentProtection(protect)
 })
 
 ipcMain.handle(IPC.RESPOND_PERMISSION, (_event, { tabId, questionId, optionId }: { tabId: string; questionId: string; optionId: string }) => {

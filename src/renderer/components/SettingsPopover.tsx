@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
-import { DotsThree, Bell, ArrowsOutSimple, Moon } from '@phosphor-icons/react'
+import { DotsThree, Bell, ArrowsOutSimple, Moon, Monitor, Robot } from '@phosphor-icons/react'
 import { useThemeStore } from '../theme'
 import { useSessionStore } from '../stores/sessionStore'
 import { usePopoverLayer } from './PopoverLayer'
@@ -50,9 +50,21 @@ export function SettingsPopover() {
   const setThemeMode = useThemeStore((s) => s.setThemeMode)
   const expandedUI = useThemeStore((s) => s.expandedUI)
   const setExpandedUI = useThemeStore((s) => s.setExpandedUI)
-  const isExpanded = useSessionStore((s) => s.isExpanded)
+  const visibleInScreenShare = useThemeStore((s) => s.visibleInScreenShare)
+  const setVisibleInScreenShare = useThemeStore((s) => s.setVisibleInScreenShare)
+  const provider = useThemeStore((s) => s.provider)
+  const setProvider = useThemeStore((s) => s.setProvider)
+  const sessionExpanded = useSessionStore((s) => s.isExpanded)
+  const chatgptViewExpanded = useThemeStore((s) => s.chatgptViewExpanded)
+  const isExpanded = sessionExpanded || chatgptViewExpanded
   const popoverLayer = usePopoverLayer()
   const colors = useColors()
+
+  // Sync persisted screen-share preference to the main process on mount.
+  useEffect(() => {
+    window.clui?.setContentProtection(!visibleInScreenShare)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const [open, setOpen] = useState(false)
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -62,28 +74,19 @@ export function SettingsPopover() {
   const updatePos = useCallback(() => {
     if (!triggerRef.current) return
     const rect = triggerRef.current.getBoundingClientRect()
-    const gap = 6 // Match HistoryPicker spacing exactly.
+    const gap = 6
     const margin = 8
     const right = window.innerWidth - rect.right
 
     if (isExpanded) {
-      // Keep anchored below trigger (so it never covers the dots button),
-      // and shrink if needed instead of shifting upward onto the trigger.
+      // Open downward below the trigger
       const top = rect.bottom + gap
-      setPos({
-        top,
-        right,
-        maxHeight: Math.max(120, window.innerHeight - top - margin),
-      })
+      setPos({ top, right, maxHeight: Math.max(120, window.innerHeight - top - margin) })
       return
     }
 
-    // Same logic as HistoryPicker for collapsed mode: open upward from trigger.
-    setPos({
-      bottom: window.innerHeight - rect.top + gap,
-      right,
-      maxHeight: undefined,
-    })
+    // Open upward from trigger
+    setPos({ bottom: window.innerHeight - rect.top + gap, right, maxHeight: undefined })
   }, [isExpanded])
 
   useEffect(() => {
@@ -138,6 +141,13 @@ export function SettingsPopover() {
       </button>
 
       {popoverLayer && open && createPortal(
+        <>
+          {/* Transparent backdrop — catches clicks anywhere including inside webview */}
+          <div
+            data-clui-ui
+            onClick={() => setOpen(false)}
+            style={{ position: 'fixed', inset: 0, zIndex: 999, pointerEvents: 'auto' }}
+          />
         <motion.div
           ref={popoverRef}
           data-clui-ui
@@ -153,6 +163,7 @@ export function SettingsPopover() {
             right: pos.right,
             width: 240,
             pointerEvents: 'auto',
+            zIndex: 1000,
             background: colors.popoverBg,
             backdropFilter: 'blur(20px)',
             WebkitBackdropFilter: 'blur(20px)',
@@ -162,6 +173,32 @@ export function SettingsPopover() {
           }}
         >
           <div className="p-3 flex flex-col gap-2.5">
+            {/* AI Provider */}
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <Robot size={14} style={{ color: colors.textTertiary }} />
+                <div className="text-[12px] font-medium" style={{ color: colors.textPrimary }}>AI Provider</div>
+              </div>
+              <div className="flex items-center" style={{ background: colors.surfacePrimary, borderRadius: 9999, padding: 2, border: `1px solid ${colors.containerBorder}` }}>
+                <button
+                  onClick={() => setProvider('claude')}
+                  className="flex-1 py-1 rounded-full text-[11px] font-medium transition-colors"
+                  style={{ background: provider === 'claude' ? colors.accent : 'transparent', color: provider === 'claude' ? colors.textOnAccent : colors.textTertiary }}
+                >
+                  Claude Code
+                </button>
+                <button
+                  onClick={() => setProvider('chatgpt')}
+                  className="flex-1 py-1 rounded-full text-[11px] font-medium transition-colors"
+                  style={{ background: provider === 'chatgpt' ? '#10a37f' : 'transparent', color: provider === 'chatgpt' ? '#fff' : colors.textTertiary }}
+                >
+                  ChatGPT
+                </button>
+              </div>
+            </div>
+
+            <div style={{ height: 1, background: colors.popoverBorder }} />
+
             {/* Full width */}
             <div>
               <div className="flex items-center justify-between gap-3">
@@ -178,6 +215,26 @@ export function SettingsPopover() {
                   }}
                   colors={colors}
                   label="Toggle full width panel"
+                />
+              </div>
+            </div>
+
+            <div style={{ height: 1, background: colors.popoverBorder }} />
+
+            {/* Visible in screen sharing */}
+            <div>
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Monitor size={14} style={{ color: colors.textTertiary }} />
+                  <div className="text-[12px] font-medium" style={{ color: colors.textPrimary }}>
+                    Visible in screen sharing
+                  </div>
+                </div>
+                <RowToggle
+                  checked={visibleInScreenShare}
+                  onChange={setVisibleInScreenShare}
+                  colors={colors}
+                  label="Toggle visibility in screen sharing"
                 />
               </div>
             </div>
@@ -222,7 +279,8 @@ export function SettingsPopover() {
               </div>
             </div>
           </div>
-        </motion.div>,
+        </motion.div>
+        </>,
         popoverLayer,
       )}
     </>
